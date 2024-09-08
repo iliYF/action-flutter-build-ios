@@ -26,6 +26,13 @@ inputs:
   keychain-password:
     description: "random string in secrets"
     required: true
+  bundle-id:
+    description: "bundle identifier of the iOS App"
+    required: false
+  export-options-plist:
+    description: "build with config file: ExportOptions.plist"
+    required: false
+
 
 runs:
   using: "composite"
@@ -64,6 +71,8 @@ runs:
         IOS_BUILD_CERTIFICATE_PASSWORD: ${{ inputs.certificate-password }}
         IOS_MOBILE_PROVISIONING_PROFILE_BASE64: ${{ inputs.provisioning-profile-base64 }}
         IOS_GITHUB_KEYCHAIN_PASSWORD: ${{ inputs.keychain-password }}
+        IOS_BUNDLE_ID: ${{ inputs.bundle-id }}
+        IOS_BUILD_EXPORT_OPTIONS_PLIST: ${{ inputs.export-options-plist }}
         # Slight modification in the script from https://docs.github.com/en/actions/deployment/deploying-xcode-applications/installing-an-apple-certificate-on-macos-runners-for-xcode-development
         # that adds the uuid to the mobile provision so xcode can find it
       run: |
@@ -93,12 +102,28 @@ runs:
         # apply provisioning profile
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
         cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+        
+        if [[ -n "$IOS_BUILD_EXPORT_OPTIONS_PLIST" ]]; then
+            echo "Provisioning profiles $UUID to $IOS_BUILD_EXPORT_OPTIONS_PLIST"
+            /usr/libexec/PlistBuddy -c "Print :provisioningProfiles" $IOS_BUILD_EXPORT_OPTIONS_PLIST
+            /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:$IOS_BUNDLE_ID $UUID" $IOS_BUILD_EXPORT_OPTIONS_PLIST
+            /usr/libexec/PlistBuddy -c "Print :provisioningProfiles" $IOS_BUILD_EXPORT_OPTIONS_PLIST
+        fi
 
     - name: List profiles
       run: cd ~/Library/MobileDevice/Provisioning\ Profiles && ls
       shell: bash
 
     - name: Build
-      run: ${{ inputs.build-cmd }}
       shell: bash
+      env:
+         IOS_BUILD_CMD: ${{ inputs.build-cmd }}
+         IOS_BUILD_EXPORT_OPTIONS_PLIST: ${{ inputs.export-options-plist }}
+      run: |
+        echo "Add ExportOptions.plist if exist"
+        if [[ -n "$IOS_BUILD_EXPORT_OPTIONS_PLIST" ]]; then
+            IOS_BUILD_CMD="$IOS_BUILD_CMD --export-options-plist=$IOS_BUILD_EXPORT_OPTIONS_PLIST"
+        fi
+        echo "$IOS_BUILD_CMD" 
+        $IOS_BUILD_CMD
       working-directory: ${{ inputs.working-directory }}
